@@ -112,7 +112,7 @@ CPU::CPU(Bus &bus_in) : bus(bus_in) {
  
         /*  Branching */
         {0x4c, {0x4c, "JMP", 3, 3, AddressMode::NoneAddressing, &CPU::JMP}}, //AddressMode that acts as Immidiate
-        {0x6c, {0x6c, "JMP", 3, 5, AddressMode::NoneAddressing, &CPU::JMP}}, //AddressMode:Indirect with 6502 bug
+        {0x6c, {0x6c, "JMP", 3, 5, AddressMode::NoneAddressing, &CPU::JMPI}}, //AddressMode:Indirect with 6502 bug
  
         {0x20, {0x20, "JSR", 3, 6, AddressMode::NoneAddressing, &CPU::JSR}},
         {0x60, {0x60, "RTS", 1, 6, AddressMode::NoneAddressing, &CPU::RTS}},
@@ -204,7 +204,7 @@ void CPU::reset() {
     sp = STACK_RESET; 
 }
 
-uint16_t CPU::get_address(AddressMode &mode) {
+uint16_t CPU::get_address(AddressMode mode) {
     switch (mode){
     case Accumulator:
         return (uint16_t)reg_a;
@@ -260,26 +260,48 @@ bool CPU::is_page_crossed(uint16_t start, uint16_t end) {
 }
 
 void CPU::push_stack(uint8_t data) {
-    bus.write(0x100 | sp--, data);
+    bus.write(STACK_START | sp--, data);
 }
 
 uint8_t CPU::pop_stack() {
-    return bus.read(0x100 | sp++);
+    return bus.read(STACK_START | sp++);
 }
 
 void CPU::push_stack16(uint16_t data) {
-    bus.write_16(0x100 | sp--, data);
+    bus.write_16(STACK_START | sp--, data);
 }
 
 uint16_t CPU::pop_stack16() {
-    return bus.read_16(0x100 | sp++);
+    return bus.read_16(STACK_START | sp++);
+}
+
+void CPU::interrupt_handler(Interrupt type) {
+    push_stack16(pc);
+    uint8_t flags = flag_n << 7 |
+                    flag_v << 6 |
+                        1 << 5  |
+            (type == BRK_) << 4  |
+                    flag_d << 3 |
+                    flag_i << 2 |
+                    flag_z << 1 |
+                    flag_c;
+    push_stack(flags);
+    flag_i = true;
+
+    switch (type)  {
+    case IRQ_:
+    case BRK_:
+        pc = bus.read_16(BRK_IRQ_Handler);
+        break;
+    case NMI_:
+        pc = bus.read_16(NMI_Handler);
+    default:
+        break;
+    }
 }
 
 void CPU::step() {
 
-    //Fetch instruction at pc
-    //index into map
-    //execute function
     //TODO: update cycle counts for bus
 
 
@@ -291,7 +313,7 @@ void CPU::step() {
 
     Opcode opcode = opcode_matrix[instruction];
 
-    if ( (opcode.mode == AddressMode::Indirect_X || opcode.mode == AddressMode::Absolute_X || opcode.mode == AddressMode::Absolute_Y ) && opcode.name != "STA") {
+    if ( (opcode.mode == AddressMode::Indirect_Y || opcode.mode == AddressMode::Absolute_X || opcode.mode == AddressMode::Absolute_Y ) && opcode.name != "STA") {
         extra_cycles = 1;
     }
     cycle_count = opcode_matrix[instruction].cycles + extra_cycles;
@@ -326,77 +348,521 @@ void CPU::LDY(AddressMode mode) {
     flag_n = reg_y & 0x80;
 }
 
+
 //Stores
-void CPU::STA(AddressMode mode) {}
-void CPU::STX(AddressMode mode) {}
-void CPU::STY(AddressMode mode) {}
+void CPU::STA(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    bus.write(address, reg_y);
+}
+
+void CPU::STX(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    bus.write(address, reg_x);
+}
+
+void CPU::STY(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    bus.write(address, reg_x);
+}
+
 
 //Transfer
-void CPU::TAX(AddressMode mode) {}
-void CPU::TAY(AddressMode mode) {}
-void CPU::TXA(AddressMode mode) {}
-void CPU::TYA(AddressMode mode) {}
+void CPU::TAX(AddressMode mode) {
+    reg_x = reg_a;
+    
+    flag_z = !reg_x;
+    flag_n = reg_x & 0x80;
+}
+
+void CPU::TAY(AddressMode mode) {
+    reg_y = reg_a;
+    
+    flag_z = !reg_y;
+    flag_n = reg_y & 0x80;
+}
+
+void CPU::TXA(AddressMode mode) {
+    reg_a = reg_x;
+    
+    flag_z = !reg_a;
+    flag_n = reg_a & 0x80;
+}
+
+void CPU::TYA(AddressMode mode) {
+    reg_a = reg_y;
+    
+    flag_z = !reg_y;
+    flag_n = reg_y & 0x80;
+}
+
 
 //Stack    
-void CPU::TSX(AddressMode mode) {}
-void CPU::TXS(AddressMode mode) {}
-void CPU::PHA(AddressMode mode) {}
-void CPU::PHP(AddressMode mode) {}
-void CPU::PLA(AddressMode mode) {}
-void CPU::PLP(AddressMode mode) {}
+void CPU::TSX(AddressMode mode) {
+    reg_x = sp;
+
+    flag_z = !reg_x;
+    flag_n = reg_x & 0x80;
+}
+
+void CPU::TXS(AddressMode mode) {
+    sp = reg_x;
+}
+
+void CPU::PHA(AddressMode mode) {
+    push_stack(reg_a);
+}
+
+void CPU::PHP(AddressMode mode) {
+    uint8_t flags = flag_n << 7 |
+                    flag_v << 6 |
+                        1 << 5  |
+                        1 << 4  |
+                    flag_d << 3 |
+                    flag_i << 2 |
+                    flag_z << 1 |
+                    flag_c;
+    push_stack(flags);
+}
+
+void CPU::PLA(AddressMode mode) {
+    reg_a = pop_stack();
+
+    flag_z = !reg_a;
+    flag_n = reg_a & 0x80;
+}
+
+void CPU::PLP(AddressMode mode) {
+    uint8_t flags = pop_stack();
+        flag_n = flags & 0x80;
+        flag_v = flags & 0x40;
+        flag_d = flags & 0x8;
+        flag_i = flags & 0x4;
+        flag_z = flags & 0x2;
+        flag_c = flags & 0x1;
+}
+
 
 //Logical  
-void CPU::AND(AddressMode mode) {}
-void CPU::EOR(AddressMode mode) {}
-void CPU::ORA(AddressMode mode) {}
-void CPU::BIT(AddressMode mode) {}
+void CPU::AND(AddressMode mode) {
+    uint16_t address = get_address(mode);
+
+    reg_a &= bus.read(address);
+
+    flag_z = !reg_a;
+    flag_n = reg_a & 0x80;
+}
+
+void CPU::EOR(AddressMode mode) {
+    uint16_t address = get_address(mode);
+
+    reg_a ^= bus.read(address);
+
+    flag_z = !reg_a;
+    flag_n = reg_a & 0x80;
+}
+
+void CPU::ORA(AddressMode mode) {
+    uint16_t address = get_address(mode);
+
+    reg_a |= bus.read(address);
+
+    flag_z = !reg_a;
+    flag_n = reg_a & 0x80;
+}
+
+void CPU::BIT(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    uint8_t data = bus.read(address);
+
+    flag_z = !(reg_a & data);
+    flag_v = data & 0x40;
+    flag_n = data & 0x80;
+}
+
 
 //Arithmetic
-void CPU::ADC(AddressMode mode) {}
-void CPU::SBC(AddressMode mode) {}
-void CPU::CMP(AddressMode mode) {}
-void CPU::CPX(AddressMode mode) {}
-void CPU::CPY(AddressMode mode) {}
+void CPU::ADC(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    uint8_t data = bus.read(address);
+
+    uint16_t sum = reg_a + data + flag_c;
+
+    flag_c = sum > 0xFF;
+    flag_v = ~(reg_a ^ data) & (reg_a ^ sum) & 0x80;
+    flag_z = !sum;
+    flag_n = sum & 0x80;
+
+    reg_a = (uint8_t) sum;
+}
+
+void CPU::SBC(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    uint8_t data = bus.read(address);
+
+    uint16_t diff = reg_a - data - !flag_c;
+
+    flag_c = !(diff > 0xFF);
+    flag_v = ~(reg_a ^ ~data) & (reg_a ^ diff) & 0x80;
+    flag_z = !diff;
+    flag_n = diff & 0x80;
+
+    reg_a = (uint8_t) diff;
+}
+
+void CPU::CMP(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    uint8_t data = bus.read(address);
+    
+    uint16_t diff = reg_a - data;
+    flag_c = diff >= 0xFF;
+    flag_z = !diff;
+    flag_n = diff & 0x80;
+}
+
+void CPU::CPX(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    uint8_t data = bus.read(address);
+    
+    uint16_t diff = reg_x - data;
+    flag_c = diff >= 0xFF;
+    flag_z = !diff;
+    flag_n = diff & 0x80;
+}
+void CPU::CPY(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    uint8_t data = bus.read(address);
+    
+    uint16_t diff = reg_y - data;
+    flag_c = diff >= 0xFF;
+    flag_z = !diff;
+    flag_n = diff & 0x80;    
+}
+
 
 //Increments  Decrements   
-void CPU::INC(AddressMode mode) {}
-void CPU::INX(AddressMode mode) {}
-void CPU::INY(AddressMode mode) {}
-void CPU::DEC(AddressMode mode) {}
-void CPU::DEX(AddressMode mode) {}
-void CPU::DEY(AddressMode mode) {}
+void CPU::INC(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    
+    uint8_t data = bus.read(address) + 1;
+    bus.write(address, data);
+
+    flag_z = !data;
+    flag_n = data & 0x80;
+}
+
+void CPU::INX(AddressMode mode) {
+    reg_x +=1;
+
+    flag_z = !reg_x;
+    flag_n = reg_x & 0x80;
+}
+
+void CPU::INY(AddressMode mode) {
+    reg_y +=1;
+
+    flag_z = !reg_y;
+    flag_n = reg_y & 0x80;
+}
+
+void CPU::DEC(AddressMode mode) {
+    uint16_t address = get_address(mode);
+    
+    uint8_t data = bus.read(address) - 1;
+    bus.write(address, data);
+
+    flag_z = !data;
+    flag_n = data & 0x80;
+}
+
+void CPU::DEX(AddressMode mode) {
+    reg_x -=1;
+
+    flag_z = !reg_x;
+    flag_n = reg_x & 0x80;
+}
+
+void CPU::DEY(AddressMode mode) {
+    reg_y -=1;
+
+    flag_z = !reg_y;
+    flag_n = reg_y & 0x80;
+
+}
+
 
 //Bit Shifts
-void CPU::ASL(AddressMode mode) {}
-void CPU::LSR(AddressMode mode) {}
-void CPU::ROL(AddressMode mode) {}
-void CPU::ROR(AddressMode mode) {}
+void CPU::ASL(AddressMode mode) {
+    if(mode == AddressMode::Accumulator) {
+        
+        flag_c = reg_a & 0x80;
+
+        reg_a <<= 1;
+
+        flag_z = !reg_a;
+        flag_n = reg_a & 0x80;
+
+    }
+    else {
+        uint16_t address = get_address(mode);
+        uint8_t data = bus.read(address);
+       
+        flag_c = data & 0x80;
+        
+        data <<= 1;
+
+        flag_z = !data;
+        flag_n = data & 0x80;
+        bus.write(address, data);
+    }
+}
+
+void CPU::LSR(AddressMode mode) {
+    if(mode == AddressMode::Accumulator) {
+        
+        flag_c = reg_a & 1;
+
+        reg_a >>= 1;
+
+        flag_z = !reg_a;
+        flag_n = reg_a & 0x80;
+
+    }
+    else {
+        uint16_t address = get_address(mode);
+        uint8_t data = bus.read(address);
+       
+        flag_c = data & 1;
+        
+        data <<= 1;
+
+        flag_z = !data;
+        flag_n = data & 0x80;
+        bus.write(address, data);
+    }
+}
+
+void CPU::ROL(AddressMode mode) {
+    if(mode == AddressMode::Accumulator) {
+        
+        bool prev_carry_flag = flag_c;
+
+        flag_c = reg_a & 0x80;
+
+
+        reg_a = (reg_a << 1) | prev_carry_flag;
+
+        flag_z = !reg_a;
+        flag_n = reg_a & 0x80;
+
+    }
+    else {
+        uint16_t address = get_address(mode);
+        uint8_t data = bus.read(address);
+       
+        bool prev_carry_flag = flag_c;
+        flag_c = data & 0x80;
+        
+        data = (data << 1) | prev_carry_flag;
+
+        flag_z = !data;
+        flag_n = data & 0x80;
+        bus.write(address, data);
+    }
+}
+
+void CPU::ROR(AddressMode mode) {
+    if(mode == AddressMode::Accumulator) {
+        
+        bool prev_carry_flag = flag_c;
+        flag_c = reg_a & 1;
+
+        reg_a = (reg_a >> 1) | prev_carry_flag << 7;
+
+        flag_z = !reg_a;
+        flag_n = reg_a & 0x80;
+
+    }
+    else {
+        uint16_t address = get_address(mode);
+        uint8_t data = bus.read(address);
+       
+        bool prev_carry_flag = flag_c;
+        flag_c = data & 1;
+        
+        data = (data >> 1) | prev_carry_flag << 7;
+
+        flag_z = !data;
+        flag_n = data & 0x80;
+        bus.write(address, data);
+    }
+
+}
+
 
 //Jumps  Calls    
-void CPU::JMP(AddressMode mode) {}
-void CPU::JSR(AddressMode mode) {}
-void CPU::RTS(AddressMode mode) {}
+void CPU::JMP(AddressMode mode) {
+    uint16_t address = get_address(AddressMode::Absolute);
+    pc = address;
+}
+
+void CPU::JMPI(AddressMode mode) {
+    uint16_t address = get_address(AddressMode::Absolute);
+
+    if ((address & 0x00ff) == 0x00ff) {
+        uint16_t lo = (uint16_t)bus.read(address);
+        uint16_t hi = (uint16_t)bus.read(address & 0xff00);
+        address = hi << 8 | lo;
+    }
+    pc = address;
+}
+
+void CPU::JSR(AddressMode mode) {
+    push_stack16(pc + 1);
+    uint16_t address = get_address(mode);
+    pc = address;
+    
+}
+void CPU::RTS(AddressMode mode) {
+    pc = pop_stack16() + 1;
+}
+
 
 //Branches  
-void CPU::BCC(AddressMode mode) {}
-void CPU::BCS(AddressMode mode) {}
-void CPU::BEQ(AddressMode mode) {}
-void CPU::BMI(AddressMode mode) {}
-void CPU::BNE(AddressMode mode) {}
-void CPU::BPL(AddressMode mode) {}
-void CPU::BVC(AddressMode mode) {}
-void CPU::BVS(AddressMode mode) {}
+void CPU::BCC(AddressMode mode) {
+    if (!flag_c) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BCS(AddressMode mode) {
+    if (flag_c) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BEQ(AddressMode mode) {
+    if (flag_z) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BMI(AddressMode mode) {
+    if (flag_n) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BNE(AddressMode mode) {
+    if (!flag_z) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BPL(AddressMode mode) {
+    if (!flag_n) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BVC(AddressMode mode) {
+    if (!flag_v) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
+void CPU::BVS(AddressMode mode) {
+    if (flag_v) {
+        uint16_t address = get_address(AddressMode::ZeroPage);
+        uint8_t offset = bus.read(address);
+        pc = pc + offset;
+    }
+    else {
+        pc++;
+    }
+}
+
 
 //Status Flag Changes   
-void CPU::CLC(AddressMode mode) {}
-void CPU::CLD(AddressMode mode) {}
-void CPU::CLI(AddressMode mode) {}
-void CPU::CLV(AddressMode mode) {}
-void CPU::SEC(AddressMode mode) {}
-void CPU::SED(AddressMode mode) {}
-void CPU::SEI(AddressMode mode) {}
+void CPU::CLC(AddressMode mode) {
+    flag_c = 0;
+}
+
+void CPU::CLD(AddressMode mode) {
+    flag_d = 0;
+}
+
+void CPU::CLI(AddressMode mode) {
+    flag_i = 0;
+}
+
+void CPU::CLV(AddressMode mode) {
+    flag_v = 0;
+}
+
+void CPU::SEC(AddressMode mode) {
+    flag_c = 1;
+}
+
+void CPU::SED(AddressMode mode) {
+    flag_d = 1;
+}
+
+void CPU::SEI(AddressMode mode) {
+    flag_i = 1;
+}
+
 
 //System Functions   
-void CPU::BRK(AddressMode mode) {}
+void CPU::BRK(AddressMode mode) {
+    CPU::interrupt_handler(Interrupt::BRK_);
+}
+
 void CPU::NOP(AddressMode mode) {}
-void CPU::RTI(AddressMode mode) {}
+
+void CPU::RTI(AddressMode mode) {
+    uint8_t flags = pop_stack();
+
+    flag_n = flags & 0x80;
+    flag_v = flags & 0x40;
+    flag_d = flags & 0x8;
+    flag_i = flags & 0x4;
+    flag_z = flags & 0x2;
+    flag_c = flags & 0x1;
+
+    pc = pop_stack16();
+}

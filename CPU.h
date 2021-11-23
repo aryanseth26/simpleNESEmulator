@@ -21,6 +21,13 @@ enum AddressMode {
     NoneAddressing
 };
 
+enum Interrupt {
+    NMI_,
+    RESET_,
+    BRK_,
+    IRQ_
+};
+
 
 class CPU {
 private:
@@ -36,11 +43,15 @@ private:
 
     std::unordered_map<uint8_t, Opcode> opcode_matrix;
     
-    //Reset points
+    //Reset Locations
     const uint16_t STACK_START = 0x100;
     const uint8_t STACK_RESET = 0xFD; //See https://www.pagetable.com/?p=410 for explanation
     const uint16_t PC_RESET = 0xFFCD;
     
+    //Interrupt Vector Locations
+    const uint16_t BRK_IRQ_Handler = 0xFFFE;
+    const uint16_t NMI_Handler = 0xFFFA;
+
     //Timing
     int cycle_count;
     int extra_cycles;
@@ -56,8 +67,8 @@ private:
     bool flag_c;
     bool flag_z;
     bool flag_i;
-    bool flag_d;
     bool flag_b;
+    bool flag_d;
     bool flag_v;
     bool flag_n;
     
@@ -69,7 +80,7 @@ public:
     void reset();
     void step();
 
-    uint16_t get_address(AddressMode &mode);
+    uint16_t get_address(AddressMode mode);
     void push_stack(uint8_t data);
     uint8_t pop_stack();
 
@@ -78,6 +89,7 @@ public:
 
     bool is_page_crossed(uint16_t start, uint16_t end);
 
+    void interrupt_handler(Interrupt type);
     //Loads
     void LDA(AddressMode mode);
     void LDX(AddressMode mode);
@@ -131,6 +143,7 @@ public:
 
     //Jumps  Calls
     void JMP(AddressMode mode);
+    void JMPI(AddressMode mode);
     void JSR(AddressMode mode);
     void RTS(AddressMode mode);
 

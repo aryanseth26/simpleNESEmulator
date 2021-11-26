@@ -27,6 +27,26 @@ Cartridge::Cartridge(std::string filename) {
     else {
         std::cout << "ERROR OPENING FILE\n";
         exit(-1);
+    }    
+}
+
+uint8_t Cartridge::read_prg(uint16_t addr) {
+    uint16_t mapped_addr = addr - 0x8000;
+
+    if (prg_rom.size() == 0x4000 && addr >= 0x4000) {
+        mapped_addr %= 0x4000;
     }
     
+    return prg_rom[mapped_addr];
 }
+
+void Cartridge::write_prg(uint16_t addr, uint8_t data) {
+    uint16_t mapped_addr = addr - 0x8000;
+    
+    if (prg_rom.size() == 0x4000 && addr >= 0x4000) {
+        mapped_addr %= 0x4000;
+    }
+    
+    prg_rom[mapped_addr] = data;
+}
+

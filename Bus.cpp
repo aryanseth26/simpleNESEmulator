@@ -1,16 +1,31 @@
 #include "Bus.h"
 
-Bus::Bus(): memory(0x800, 0) {}
+Bus::Bus(Cartridge &rom_in): memory(0x800, 0), rom(rom_in) {}
 
 uint8_t Bus::read(uint16_t addr) {
     if (addr < 0x2000) {
         return memory[addr & MIRROR_MASK];
     }
+    else if (addr < 0x4020) {
+        exit(-1);
+    }
+    else {
+        rom.read_prg(addr);
+    }
     return -1;
 }
 
 void Bus::write(uint16_t addr, uint8_t data) {
-    memory[addr] = data;
+    if (addr < 0x2000) {
+        memory[addr] = data;
+    }
+
+    else if (addr < 0x4020) {
+        exit(-1);
+    }
+    else {
+        rom.write_prg(addr, data);
+    }
 }
 
 uint16_t Bus::read_16(uint16_t addr) {

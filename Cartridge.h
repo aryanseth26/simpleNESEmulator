@@ -48,4 +48,7 @@ private:
 public:
     Cartridge(std::string filename);
 
+    uint8_t read_prg(uint16_t addr);
+    void write_prg(uint16_t addr, uint8_t data);
+
 };

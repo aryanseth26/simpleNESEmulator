@@ -1,7 +1,7 @@
 CC=g++ -g -Wall -fno-builtin -std=c++17
 
 # List of source files for your receiver
-EMULATOR_SOURCES=main.cpp CPU.cpp Bus.cpp Cartridge.cpp
+EMULATOR_SOURCES=main.cpp CPU.cpp Bus.cpp Cartridge.cpp PPU.cpp PictureBus.cpp
 
 # Generate the names of the receiver's object files
 EMULATOR_OBJS=${EMULATOR_SOURCES:.cpp=.o}

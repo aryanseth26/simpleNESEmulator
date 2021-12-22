@@ -1,4 +1,4 @@
-#include "CPU.h"
+#include "../include/CPU.h"
 
 int main(int argc, char **argv) {
     std::string filename(argv[1]);

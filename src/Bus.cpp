@@ -1,4 +1,4 @@
-#include "Bus.h"
+#include "../include/Bus.h"
 
 Bus::Bus(Cartridge &rom_in): memory(0x800, 0), rom(rom_in) {}
 

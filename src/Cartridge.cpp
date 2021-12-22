@@ -1,4 +1,4 @@
-#include "Cartridge.h"
+#include "../include/Cartridge.h"
 
 Cartridge::Cartridge(std::string filename) {
     //Want to read raw data, not the textual interpretation

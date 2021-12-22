@@ -1,6 +1,6 @@
 #include <vector>
 #include <cstdint>
-#include "Cartridge.h"
+#include "../include/Cartridge.h"
 
 class Bus {
 private:

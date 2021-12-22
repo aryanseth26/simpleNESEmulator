@@ -5,7 +5,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include "Bus.h"
+#include "../include/Bus.h"
 
 enum AddressMode {
     Accumulator,

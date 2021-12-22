@@ -1,4 +1,4 @@
-#include "CPU.h"
+#include "../include/CPU.h"
 
 CPU::CPU(Bus &bus_in) : bus(bus_in) {
     std::unordered_map<uint8_t, Opcode> opcode_matrix = {

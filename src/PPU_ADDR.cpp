@@ -1,4 +1,4 @@
-#include "../include/ppu_registers/PPU_ADDR.h"
+#include "../include/PPU_ADDR.h"
 
 PPU_ADDR::PPU_ADDR(): addr(0) {}
 

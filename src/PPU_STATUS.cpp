@@ -1,4 +1,4 @@
-#include "../../include/ppu_registers/PPU_STATUS.h"
+#include "../include/PPU_STATUS.h"
 
 PPU_STATUS::PPU_STATUS(): status_bits(0) {}
 

@@ -1,4 +1,4 @@
-#include "../../include/ppu_registers/PPU_CTRL.h"
+#include "../include/PPU_CTRL.h"
 
 PPU_CTRL::PPU_CTRL(): control_bits(0) {}
 

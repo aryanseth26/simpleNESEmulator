@@ -1,4 +1,4 @@
-#include "../../include/ppu_registers/PPU_MASK.h"
+#include "../include/PPU_MASK.h"
 
 PPU_MASK::PPU_MASK(): mask_bits(0) {}
 

@@ -1,26 +1,25 @@
+.PHONY: all clean
 CC=g++ -g -Wall -fno-builtin -std=c++17
 
 # List of source files for your receiver
-EMULATOR_SOURCES=$(wildcard *.cpp)
-PPU_SOURCES=$(wildcard ppu_registers/*.cpp)
+SRC=$(wildcard *.cpp)
 
 # Generate the names of the receiver's object files
-EMULATOR_OBJS=${EMULATOR_SOURCES:.cpp=.o}
-PPU_OBJS=${PPU_SOURCES:.cpp=.o}
+SRC_OBJ=${SRC:.cpp=.o}
 
 all: emulator
 
 # Compile the receiver and tag this compilation
-emulator: ${EMULATOR_OBJS}
-	cd ppu_registers && make
-	${CC} -o $@ $^ ${PPU_OBJS}
+emulator: ${SRC_OBJ}
+
+	${CC} -o $@ $^ -L /opt/homebrew/Cellar/sfml/2.5.1_2/lib -lsfml-graphics -lsfml-window -lsfml-system -lsfml-audio
 
 # Generic rules for compiling a source file to an object file
 %.o: %.cpp
-	${CC} -c $<
+	${CC} -c $< -I/opt/homebrew/Cellar/sfml/2.5.1_2/include
 %.o: %.cc
-	${CC} -c $<
+	${CC} -c $< -I/opt/homebrew/Cellar/sfml/2.5.1_2/include
 
 clean:
-	cd ppu_registers && make clean
-	rm -f ${EMULATOR_OBJS} emulator 
+	
+	rm -f ${SRC_OBJ} emulator 
